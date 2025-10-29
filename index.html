@@ -1,0 +1,259 @@
+<html>
+  <head>
+    <title>modelR</title>
+      <style>
+    #editor {
+      height: 300px;
+      width: 100%;
+      border: 1px solid #ccc;
+      font-size: 16px;
+    }
+    img {
+  width:80%;
+}
+
+.CODAP {
+ display:none;
+}
+  </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/ace.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
+    <script src="https://concord-consortium.github.io/codap-data-interactives/Common/js/iframe-phone.js" language="javascript"></script>
+
+<script src="https://concord-consortium.github.io/codap-data-interactives/Common/js/CodapInterface.js" language="javascript"></script>
+
+  </head>
+  <body>
+
+<button class="btn btn-success btn-sm" type="button" id="runButton">Run code</button>
+<textarea id='fun' style='display:none'>
+update_table <- function(name, df){
+  name <- list(tableName = name)
+  more <- list(data = df)
+  stuff <- list(name, more)
+  print(htmltools::tags$pre(class="CODAP", jsonlite::toJSON(stuff, auto_unbox = TRUE)))
+ }
+</textarea>
+<div id='editor'>outcomes <- c(1, 2, 3, 4) 
+probs <- c(0.25, 0.25, 0.25, 0.25)
+result <- sample(outcomes, 1, prob = probs)
+df <- data.frame(result)
+update_table("dataset", df)</div>
+    <div id='out'></div>
+    <canvas id="canvas" width="1000" height="600" style="display:none; margin: auto; width: 600px;"></canvas>
+
+    
+    <script type="module">
+      document.getElementById('runButton').disabled = true;   
+      var editor = ace.edit("editor");
+      editor.setTheme("ace/theme/github");
+      editor.session.setMode("ace/mode/r");
+     editor.setFontSize("16px");
+     editor.getSession().setUseWrapMode(true);
+     editor.setOptions({maxLines: Infinity});
+     editor.setHighlightActiveLine(false);
+     editor.setShowPrintMargin(false);
+     editor.setShowFoldWidgets(false);
+     editor.setBehavioursEnabled(true);
+     editor.renderer.setDisplayIndentGuides(false);
+     editor.session.getSelection().clearSelection();
+     editor.session.insert({row: editor.session.getLength(),col: 0}, "\n");
+      
+      import { WebR } from 'https://webr.r-wasm.org/latest/webr.mjs';
+      const webR = new WebR();
+      await webR.init();
+      await webR.evalRVoid('options(device=function(...){webr::canvas(width=500, height=300)})');
+      await webR.installPackages(['jsonlite', 'htmltools', 'knitr']);
+      
+      document.getElementById('runButton').disabled = false;  
+
+      
+      const shelter = await new webR.Shelter();
+      let canvas = undefined;
+    
+      // Handle webR output messages in an async loop
+      (async ()=>{
+        for (;;) {
+          const output = await webR.read();
+          switch (output.type) {
+            case 'canvas':
+              let canvas = document.getElementById('canvas');
+              if (output.data.event === 'canvasNewPage') {
+                canvas.style.display = 'block';
+                canvas.getContext('2d').clearRect(0, 0, 1000, 600);
+              }
+              if (output.data.event === 'canvasImage') {
+                canvas.getContext('2d').drawImage(output.data.image, 0, 0);
+              }
+              break;
+            default:
+              break;
+          }
+        }
+      })();
+    
+      async function runR() {
+        shelter.purge();  
+        document.getElementById('canvas').style.display = 'none';
+        document.getElementById('runButton').disabled = true;
+        var fun = document.getElementById("fun").value;
+        let code = fun + "\n" + editor.getValue();
+        const result = await shelter.captureR(code, {
+          withAutoprint: true,
+          captureStreams: true,
+          captureConditions: false,
+          captureGraphics: false
+        });
+        try {
+          const out = result.output.filter(
+            evt => evt.type == 'stdout' || evt.type == 'stderr'
+          ).map((evt) => evt.data);
+          document.getElementById('out').innerHTML = out.join('\n');
+        } finally {
+          document.getElementById('runButton').disabled = false;
+        }
+      }
+      document.getElementById('runButton').onclick = runR;
+      document.getElementById('runButton').innerText = 'Run code';
+    
+    </script>
+    <script>
+        $().ready(function(){
+  
+  // can do better than this now that I know when code has been run
+  //----------------------------------------------------------------------------
+  // listen for changes to output div
+  var target = document.querySelector('#out')
+  var observer = new MutationObserver(function(mutations) {
+    doStuff(); 
+  });
+  var config = { attributes: true, childList: true, characterData: true };
+  observer.observe(target, config);
+  //----------------------------------------------------------------------------
+
+// should I put in autosave for code?
+ 
+  // set codeR interface
+  var kAppName = "modelR";
+  var kVersion = "1.0";
+  var kDimensions = {width: 400, height: 400};
+  
+  codapInterface.init({
+    title: kAppName,
+    dimensions: kDimensions,
+    version: kVersion,
+    preventDataContextReorg: false,
+  }).then(function (result) {
+    myState = codapInterface.getInteractiveState();
+  }).then(function () {
+  // initialise code box
+    if (myState.code === undefined || myState.code === null) {
+      // do nothing
+    }
+    else
+    {
+  	  var editor = ace.edit("editor");
+      editor.setValue(myState.code); 
+      editor.setTheme("ace/theme/github");
+      editor.session.setMode("ace/mode/r");
+     editor.setFontSize("16px");
+     editor.getSession().setUseWrapMode(true);
+     editor.setOptions({maxLines: Infinity});
+     editor.setHighlightActiveLine(false);
+     editor.setShowPrintMargin(false);
+     editor.setShowFoldWidgets(false);
+     editor.setBehavioursEnabled(true);
+     editor.renderer.setDisplayIndentGuides(false);
+     editor.session.getSelection().clearSelection();
+     var line_last = editor.session.getLength();
+      editor.gotoLine(line_last);
+    }
+  }).catch(function (msg) {
+    console.log(msg);
+  });
+
+function doStuff(){
+  $(".CODAP").each(function() {
+    //save current code - maybe should autosave?
+    var editor = ace.edit("editor");
+	myState.code = editor.getValue();
+		
+		//process data table
+    var JSONstring = $(this).html();
+    var dataframe = JSON.parse(JSONstring);
+    var tableName = dataframe[0].tableName.toString();
+    var data = dataframe[1].data;
+    var attributes = Object.keys(data[0]);
+    var kAttributes = [];
+    for(var i = 0; i < attributes.length; i++)
+    {
+      kAttributes.push({name: attributes[i]})
+    }
+    
+    codapInterface.sendRequest({
+        action:'get',
+        resource: 'dataContext[' + tableName + ']'
+      }).then(function(result){
+        if (result && !result.success) {
+          codapInterface.sendRequest({
+      "action": "create",
+      "resource": "dataContext",
+      "values": {
+        "name": tableName,
+        "collections": [ {
+          "name": tableName,
+          "attrs": kAttributes
+        }]
+      }
+    })
+        } 
+      }).then(function(){
+      codapInterface.sendRequest({
+      "action": "create",
+      "resource": "dataContext[" + tableName + "].item",
+       "values": data
+    })
+    }).then(function(){
+       //guaranteeCaseTable(tableName)
+       codapInterface.sendRequest({action: 'create', resource: 'component', values: {
+            type: 'caseTable',
+            dataContext: tableName
+          }})
+    })
+});
+}
+
+// from example CODAP plugin
+function guaranteeCaseTable(name) {
+  return new Promise(function (resolve, reject) {
+    codapInterface.sendRequest({
+      action: 'get',
+      resource: 'componentList'
+    })
+    .then (function (iResult) {
+      if (iResult.success) {
+        // look for a case table in the list of components.
+        if (iResult.values && iResult.values.some(function (component) {
+              return component.type === 'caseTable'
+            })) {
+          resolve(iResult);
+        } else {
+          codapInterface.sendRequest({action: 'create', resource: 'component', values: {
+            type: 'caseTable',
+            dataContext: name
+          }}).then(function (result) {
+            resolve(result);
+          });
+        }
+      } else {
+        reject('api error');
+      }
+    })
+  });
+}
+
+});
+    </script>
+    
+  </body>
+</html>
